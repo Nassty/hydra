@@ -4,10 +4,13 @@ require('codemirror/mode/javascript/javascript')
 require('codemirror/addon/hint/javascript-hint')
 require('codemirror/addon/hint/show-hint')
 require('codemirror/addon/selection/mark-selection')
+const parser = require('esprima');
 
 var isShowing = true
 
-var EditorClass = function () {
+window.mediaRecorder = null;
+var EditorClass = function (hydra) {
+  this.hydra = hydra;
   var self = this
 
   this.cm = CodeMirror.fromTextArea(document.getElementById('code'), {
@@ -15,8 +18,19 @@ var EditorClass = function () {
     value: 'hello',
     mode: {name: 'javascript', globalVars: true},
     lineWrapping: true,
+    lineNumbers: true,
     styleSelectedText: true,
     extraKeys: {
+        'Shift-Ctrl-R': () => {
+            if(!window.mediaRecorder) {
+                this.record()
+                this.log('recording')
+            }
+            else {
+                this.recordStop();
+                this.log('stopped recording')
+            }
+        },
       'Shift-Ctrl-Enter': function (instance) {
           self.evalAll((code, error) => {
             console.log('evaluated', code, error)
@@ -30,15 +44,12 @@ var EditorClass = function () {
       },
       'Shift-Ctrl-H': function (instance) {
         var l = document.getElementsByClassName('CodeMirror-scroll')[0]
-        var m = document.getElementById('modal-header')
         if (isShowing) {
           l.style.opacity = 0
           self.logElement.style.opacity  = 0
-          m.style.opacity = 0
           isShowing = false
         } else {
           l.style.opacity= 1
-          m.style.opacity = 1
           self.logElement.style.opacity  = 1
           isShowing = true
         }
@@ -68,6 +79,45 @@ var EditorClass = function () {
   this.logElement.className = "console cm-s-tomorrow-night-eighties"
   document.body.appendChild(this.logElement)
   this.log("hi")
+
+
+  var handleDataAvailable = recordedChunks => event => {
+       if (event.data.size > 0) {
+           recordedChunks.push(event.data);
+           download(recordedChunks);
+       }
+   }
+
+   function download(recordedChunks) {
+       var blob = new Blob(recordedChunks, {
+           type: "video/webm"
+       });
+       var url = URL.createObjectURL(blob);
+       var a = document.createElement("a");
+       document.body.appendChild(a);
+       a.style = "display: none";
+       a.href = url;
+       a.download = "test.webm";
+       a.click();
+       window.URL.revokeObjectURL(url);
+   }
+
+   this.record = () => {
+       var canvas = document.querySelector("canvas");
+
+       var stream = canvas.captureStream(60);
+       var recordedChunks = [];
+
+       var options = { mimeType: "video/webm; codecs=vp9" };
+       window.mediaRecorder = new MediaRecorder(stream);
+
+       window.mediaRecorder.ondataavailable = handleDataAvailable(recordedChunks);
+       window.mediaRecorder.start();
+   }
+    this.recordStop = () => {
+        window.mediaRecorder.stop();
+        window.mediaRecorder = null;
+    }
 
 
   // TO DO: add show code param
@@ -111,8 +161,9 @@ EditorClass.prototype.eval = function (arg, callback) {
   var jsString = arg
   var isError = false
   try {
+    parser.parse(jsString);
     eval(jsString)
-    self.log(jsString)
+      self.log('ok')
   } catch (e) {
     isError = true
   //  console.log("logging", e.message)
